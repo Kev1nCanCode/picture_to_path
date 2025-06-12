@@ -6,13 +6,17 @@ export const Canvas = () => {
     const [image, setImage] = useState<string | null>(null);
     const [nodes, setNodes] = useState<Node[]>([]);
     const [edges, setEdges] = useState<Edge[]>([]);
-    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
     const [isCreatingEdge, setIsCreatingEdge] = useState(false);
     const [sourceNode, setSourceNode] = useState<Node | null>(null);
     const [showNodeForm, setShowNodeForm] = useState(false);
     const [showEdgeForm, setShowEdgeForm] = useState(false);
     const [clickPosition, setClickPosition] = useState<Position>({ x: 0, y: 0 });
     const canvasRef = useRef<HTMLDivElement>(null);
+
+    const [defaultValues, setDefaultValues] = useState({
+        building_id: '',
+        floor_id: '',
+    });
 
     const [nodeForm, setNodeForm] = useState<NodeFormData>({
         building_id: '',
@@ -60,16 +64,21 @@ export const Canvas = () => {
                     };
                     setEdges([...edges, newEdge]);
                     setSourceNode(null);
-                    setIsCreatingEdge(false);
                 }
             }
         } else {
             setClickPosition({ x, y });
+            setNodeForm({
+                building_id: defaultValues.building_id,
+                floor_id: defaultValues.floor_id,
+                name: '',
+            });
             setShowNodeForm(true);
         }
     };
 
-    const handleNodeFormSubmit = () => {
+    const handleNodeFormSubmit = (e?: React.FormEvent) => {
+        e?.preventDefault();
         const newNode: Node = {
             id: `node-${nodes.length + 1}`,
             ...nodeForm,
@@ -78,7 +87,7 @@ export const Canvas = () => {
         };
         setNodes([...nodes, newNode]);
         setShowNodeForm(false);
-        setNodeForm({ building_id: '', floor_id: '', name: '' });
+        setNodeForm({ building_id: defaultValues.building_id, floor_id: defaultValues.floor_id, name: '' });
     };
 
     const exportToCSV = () => {
@@ -109,8 +118,28 @@ export const Canvas = () => {
         edgesLink.click();
     };
 
+    const handleEdgeFormClose = () => {
+        setShowEdgeForm(false);
+        setSourceNode(null);
+    };
+
     return (
         <Box sx={{ p: 2 }}>
+            <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'center' }}>
+                <TextField
+                    label="Default Building ID"
+                    value={defaultValues.building_id}
+                    onChange={(e) => setDefaultValues({ ...defaultValues, building_id: e.target.value })}
+                    size="small"
+                />
+                <TextField
+                    label="Default Floor ID"
+                    value={defaultValues.floor_id}
+                    onChange={(e) => setDefaultValues({ ...defaultValues, floor_id: e.target.value })}
+                    size="small"
+                />
+            </Box>
+
             <input
                 type="file"
                 accept="image/*"
@@ -189,8 +218,16 @@ export const Canvas = () => {
                 })}
             </Box>
 
-            <Dialog open={showNodeForm} onClose={() => setShowNodeForm(false)}>
-                <Box sx={{ p: 2 }}>
+            <Dialog
+                open={showNodeForm}
+                onClose={() => setShowNodeForm(false)}
+                disableEscapeKeyDown
+            >
+                <Box
+                    component="form"
+                    onSubmit={handleNodeFormSubmit}
+                    sx={{ p: 2 }}
+                >
                     <TextField
                         label="Building ID"
                         value={nodeForm.building_id}
@@ -211,6 +248,13 @@ export const Canvas = () => {
                         onChange={(e) => setNodeForm({ ...nodeForm, name: e.target.value })}
                         fullWidth
                         margin="normal"
+                        autoFocus
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleNodeFormSubmit();
+                            }
+                        }}
                     />
                     <Button onClick={handleNodeFormSubmit} variant="contained">
                         Create Node
@@ -218,7 +262,7 @@ export const Canvas = () => {
                 </Box>
             </Dialog>
 
-            <Dialog open={showEdgeForm} onClose={() => setShowEdgeForm(false)}>
+            <Dialog open={showEdgeForm} onClose={handleEdgeFormClose}>
                 <Box sx={{ p: 2 }}>
                     <FormControl fullWidth margin="normal">
                         <InputLabel>Edge Type</InputLabel>
@@ -231,7 +275,7 @@ export const Canvas = () => {
                             <MenuItem value="elevator">Elevator</MenuItem>
                         </Select>
                     </FormControl>
-                    <Button onClick={() => setShowEdgeForm(false)} variant="contained">
+                    <Button onClick={handleEdgeFormClose} variant="contained">
                         Close
                     </Button>
                 </Box>
