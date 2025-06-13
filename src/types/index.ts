@@ -1,25 +1,25 @@
 export interface Node {
     id: string;
-    building_id: string;
-    floor_id: string;
+    buildingId: string;
+    floorId: string;
     name: string;
-    x: number;
-    y: number;
+    position: Position;
 }
 
 export interface Edge {
     id: string;
-    building_id: string;
-    floor_id: string;
-    source_id: string;
-    target_id: string;
+    buildingId: string;
+    floorId: string;
+    sourceId: string;
+    targetId: string;
     type: 'floor' | 'stair' | 'elevator';
 }
 
 export interface NodeFormData {
-    building_id: string;
-    floor_id: string;
+    buildingId: string;
+    floorId: string;
     name: string;
+    position: Position;
 }
 
 export interface Position {

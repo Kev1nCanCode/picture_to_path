@@ -1,226 +1,557 @@
-import { useRef, useState } from 'react';
-import { Box, Button, Dialog, TextField, Select, MenuItem, FormControl, InputLabel } from '@mui/material';
-import type { Node, Edge, NodeFormData, Position } from '../types';
+import { useState, useRef, useEffect } from 'react';
+import { Box, Button, Dialog, TextField, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography } from '@mui/material';
+import type { Node, Edge, NodeFormData } from '../types';
+
+const CANVAS_WIDTH = 800;  // Fixed width for the canvas container
+const CANVAS_HEIGHT = 600; // Fixed height for the canvas container
 
 export const Canvas = () => {
+    const canvasRef = useRef<HTMLDivElement>(null);
+    const imageRef = useRef<HTMLImageElement>(null);
     const [image, setImage] = useState<string | null>(null);
+    const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
     const [nodes, setNodes] = useState<Node[]>([]);
     const [edges, setEdges] = useState<Edge[]>([]);
     const [isCreatingEdge, setIsCreatingEdge] = useState(false);
-    const [sourceNode, setSourceNode] = useState<Node | null>(null);
+    const [selectedNode, setSelectedNode] = useState<Node | null>(null);
     const [showNodeForm, setShowNodeForm] = useState(false);
     const [showEdgeForm, setShowEdgeForm] = useState(false);
-    const [clickPosition, setClickPosition] = useState<Position>({ x: 0, y: 0 });
-    const canvasRef = useRef<HTMLDivElement>(null);
-
-    const [defaultValues, setDefaultValues] = useState({
-        building_id: '',
-        floor_id: '',
-    });
-
-    const [nodeForm, setNodeForm] = useState<NodeFormData>({
-        building_id: '',
-        floor_id: '',
+    const [nodeFormData, setNodeFormData] = useState<NodeFormData>({
+        buildingId: '',
+        floorId: '',
         name: '',
+        position: { x: 0, y: 0 }
     });
+    const [edgeFormData, setEdgeFormData] = useState({
+        buildingId: '',
+        floorId: '',
+        sourceId: '',
+        targetId: '',
+        type: 'floor' as 'floor' | 'stair' | 'elevator'
+    });
+    const [defaultBuildingId, setDefaultBuildingId] = useState('');
+    const [defaultFloorId, setDefaultFloorId] = useState('');
+    const [nextNodeId, setNextNodeId] = useState(1); // Track the next available node ID
+    const [editingNode, setEditingNode] = useState<Node | null>(null);
+    const [editingEdge, setEditingEdge] = useState<Edge | null>(null);
 
-    const [edgeType, setEdgeType] = useState<'floor' | 'stair' | 'elevator'>('elevator');
+    useEffect(() => {
+        const updatePositions = () => {
+            if (imageRef.current) {
+                setImageSize({
+                    width: imageRef.current.naturalWidth,
+                    height: imageRef.current.naturalHeight
+                });
+            }
+        };
+
+        window.addEventListener('resize', updatePositions);
+        return () => window.removeEventListener('resize', updatePositions);
+    }, []);
 
     const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = (e) => {
-                setImage(e.target?.result as string);
+                const img = new Image();
+                img.onload = () => {
+                    setImage(img.src);
+                    setImageSize({ width: img.naturalWidth, height: img.naturalHeight });
+                };
+                img.src = e.target?.result as string;
             };
             reader.readAsDataURL(file);
         }
     };
 
-    const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!canvasRef.current || !image) return;
+    const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!image || !canvasRef.current) return;
 
-        const rect = canvasRef.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const imageElement = canvasRef.current.querySelector('img');
+        if (!imageElement) return;
+
+        const imageRect = imageElement.getBoundingClientRect();
+        const canvasRect = canvasRef.current.getBoundingClientRect();
+
+        // Calculate click position relative to the canvas
+        const x = event.clientX - canvasRect.left;
+        const y = event.clientY - canvasRect.top;
+
+        // Calculate scaling factors
+        const scaleX = imageSize.width / imageRect.width;
+        const scaleY = imageSize.height / imageRect.height;
+
+        // Convert to actual image coordinates
+        const actualX = Math.round(x * scaleX);
+        const actualY = Math.round(y * scaleY);
+
+        // Ensure coordinates are within image bounds
+        if (actualX < 0 || actualX > imageSize.width || actualY < 0 || actualY > imageSize.height) {
+            return;
+        }
 
         if (isCreatingEdge) {
-            const clickedNode = nodes.find(node =>
-                Math.abs(node.x - x) < 20 && Math.abs(node.y - y) < 20
-            );
+            // Find the closest node within 20 pixels
+            const clickedNode = nodes.find(node => {
+                const distance = Math.sqrt(
+                    Math.pow(node.position.x - actualX, 2) + Math.pow(node.position.y - actualY, 2)
+                );
+                return distance < 20;
+            });
 
             if (clickedNode) {
-                if (!sourceNode) {
-                    setSourceNode(clickedNode);
-                } else if (sourceNode.id !== clickedNode.id) {
-                    setShowEdgeForm(true);
+                if (!selectedNode) {
+                    // First node selection
+                    setSelectedNode(clickedNode);
+                } else if (clickedNode.id !== selectedNode.id) {
+                    // Second node selection - create edge
                     const newEdge: Edge = {
                         id: `edge-${edges.length + 1}`,
-                        building_id: sourceNode.building_id,
-                        floor_id: sourceNode.floor_id,
-                        source_id: sourceNode.id,
-                        target_id: clickedNode.id,
-                        type: edgeType,
+                        buildingId: selectedNode.buildingId,
+                        floorId: selectedNode.floorId,
+                        sourceId: selectedNode.id,
+                        targetId: clickedNode.id,
+                        type: 'floor' // default type
                     };
                     setEdges([...edges, newEdge]);
-                    setSourceNode(null);
+                    setSelectedNode(null);
                 }
             }
         } else {
-            setClickPosition({ x, y });
-            setNodeForm({
-                building_id: defaultValues.building_id,
-                floor_id: defaultValues.floor_id,
+            setNodeFormData({
+                buildingId: defaultBuildingId,
+                floorId: defaultFloorId,
                 name: '',
+                position: { x: actualX, y: actualY }
             });
             setShowNodeForm(true);
         }
     };
 
-    const handleNodeFormSubmit = (e?: React.FormEvent) => {
-        e?.preventDefault();
-        const newNode: Node = {
-            id: `node-${nodes.length + 1}`,
-            ...nodeForm,
-            x: clickPosition.x,
-            y: clickPosition.y,
-        };
-        setNodes([...nodes, newNode]);
-        setShowNodeForm(false);
-        setNodeForm({ building_id: defaultValues.building_id, floor_id: defaultValues.floor_id, name: '' });
+    const handleDeleteNode = (nodeId: string) => {
+        // Remove the node
+        setNodes(nodes.filter(node => node.id !== nodeId));
+        // Remove any edges connected to this node
+        setEdges(edges.filter(edge =>
+            edge.sourceId !== nodeId && edge.targetId !== nodeId
+        ));
     };
 
-    const exportToCSV = () => {
-        // Export nodes
+    const handleNodeEdit = (node: Node) => {
+        setEditingNode(node);
+        setNodeFormData({
+            buildingId: node.buildingId,
+            floorId: node.floorId,
+            name: node.name,
+            position: node.position
+        });
+        setShowNodeForm(true);
+    };
+
+    const handleNodeFormSubmit = () => {
+        if (nodeFormData.name) {
+            if (editingNode) {
+                // Update existing node
+                setNodes(nodes.map(node =>
+                    node.id === editingNode.id
+                        ? { ...node, ...nodeFormData }
+                        : node
+                ));
+                setEditingNode(null);
+            } else {
+                // Create new node
+                const newNode: Node = {
+                    id: nextNodeId.toString(),
+                    buildingId: nodeFormData.buildingId,
+                    floorId: nodeFormData.floorId,
+                    name: nodeFormData.name,
+                    position: nodeFormData.position
+                };
+                setNodes([...nodes, newNode]);
+                setNextNodeId(nextNodeId + 1);
+            }
+            setShowNodeForm(false);
+            setNodeFormData({
+                buildingId: defaultBuildingId,
+                floorId: defaultFloorId,
+                name: '',
+                position: { x: 0, y: 0 }
+            });
+        }
+    };
+
+    const handleEdgeFormSubmit = () => {
+        if (edgeFormData.type) {
+            if (editingEdge) {
+                // Update existing edge
+                setEdges(edges.map(edge =>
+                    edge.id === editingEdge.id
+                        ? { ...edge, ...edgeFormData }
+                        : edge
+                ));
+                setEditingEdge(null);
+            } else if (selectedNode) {
+                // Create new edge
+                const newEdge: Edge = {
+                    id: `edge-${edges.length + 1}`,
+                    buildingId: selectedNode.buildingId,
+                    floorId: selectedNode.floorId,
+                    sourceId: selectedNode.id,
+                    targetId: edgeFormData.targetId,
+                    type: edgeFormData.type,
+                };
+                setEdges([...edges, newEdge]);
+                setSelectedNode(null);
+            }
+            setShowEdgeForm(false);
+            setEdgeFormData({
+                buildingId: '',
+                floorId: '',
+                sourceId: '',
+                targetId: '',
+                type: 'floor'
+            });
+        }
+    };
+
+    const handleDeleteEdge = (edgeId: string) => {
+        setEdges(edges.filter(edge => edge.id !== edgeId));
+    };
+
+    const handleEdgeEdit = (edge: Edge) => {
+        setEditingEdge(edge);
+        setEdgeFormData({
+            buildingId: edge.buildingId,
+            floorId: edge.floorId,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            type: edge.type
+        });
+        setShowEdgeForm(true);
+    };
+
+    const handleExport = () => {
+        // Create nodes CSV
         const nodesCSV = [
-            'building_id;floor_id;name;x;y',
-            ...nodes.map(node => `${node.building_id};${node.floor_id};${node.name};${node.x};${node.y}`)
+            ['id', 'building_id', 'floor_id', 'name', 'x', 'y'].join(';'),
+            ...nodes.map(node => [
+                node.id,
+                node.buildingId,
+                node.floorId,
+                node.name,
+                node.position.x,
+                node.position.y
+            ].join(';'))
         ].join('\n');
 
-        const nodesBlob = new Blob([nodesCSV], { type: 'text/csv' });
-        const nodesURL = window.URL.createObjectURL(nodesBlob);
+        // Create edges CSV
+        const edgesCSV = [
+            ['building_id', 'floor_id', 'source_id', 'target_id', 'type'].join(';'),
+            ...edges.map(edge => [
+                edge.buildingId,
+                edge.floorId,
+                edge.sourceId,
+                edge.targetId,
+                edge.type
+            ].join(';'))
+        ].join('\n');
+
+        // Create and download nodes CSV
+        const nodesBlob = new Blob([nodesCSV], { type: 'text/csv;charset=utf-8;' });
         const nodesLink = document.createElement('a');
-        nodesLink.href = nodesURL;
+        nodesLink.href = URL.createObjectURL(nodesBlob);
         nodesLink.download = 'nodes.csv';
         nodesLink.click();
 
-        // Export edges
-        const edgesCSV = [
-            'building_id;floor_id;source_id;target_id;type',
-            ...edges.map(edge => `${edge.building_id};${edge.floor_id};${edge.source_id};${edge.target_id};${edge.type}`)
-        ].join('\n');
-
-        const edgesBlob = new Blob([edgesCSV], { type: 'text/csv' });
-        const edgesURL = window.URL.createObjectURL(edgesBlob);
+        // Create and download edges CSV
+        const edgesBlob = new Blob([edgesCSV], { type: 'text/csv;charset=utf-8;' });
         const edgesLink = document.createElement('a');
-        edgesLink.href = edgesURL;
+        edgesLink.href = URL.createObjectURL(edgesBlob);
         edgesLink.download = 'edges.csv';
         edgesLink.click();
     };
 
-    const handleEdgeFormClose = () => {
-        setShowEdgeForm(false);
-        setSourceNode(null);
+    const getNodeStyle = (node: Node) => {
+        const imageElement = canvasRef.current?.querySelector('img');
+        if (!imageElement) return {};
+
+        const imageRect = imageElement.getBoundingClientRect();
+
+        // Calculate scaling factors
+        const scaleX = imageRect.width / imageSize.width;
+        const scaleY = imageRect.height / imageSize.height;
+
+        // Convert actual image coordinates to display coordinates
+        const displayX = node.position.x * scaleX;
+        const displayY = node.position.y * scaleY;
+
+        return {
+            position: 'absolute',
+            left: `${displayX}px`,
+            top: `${displayY}px`,
+            width: '12px',
+            height: '12px',
+            borderRadius: '50%',
+            backgroundColor: selectedNode?.id === node.id ? 'blue' : 'red',
+            transform: 'translate(-50%, -50%)',
+            cursor: 'pointer',
+            zIndex: 2
+        } as React.CSSProperties;
+    };
+
+    const getEdgeStyle = (edge: Edge) => {
+        const imageElement = canvasRef.current?.querySelector('img');
+        if (!imageElement) return {};
+
+        const sourceNode = nodes.find(n => n.id === edge.sourceId);
+        const targetNode = nodes.find(n => n.id === edge.targetId);
+        if (!sourceNode || !targetNode) return {};
+
+        const imageRect = imageElement.getBoundingClientRect();
+
+        // Calculate scaling factors
+        const scaleX = imageRect.width / imageSize.width;
+        const scaleY = imageRect.height / imageSize.height;
+
+        // Convert actual image coordinates to display coordinates
+        const sourceX = sourceNode.position.x * scaleX;
+        const sourceY = sourceNode.position.y * scaleY;
+        const targetX = targetNode.position.x * scaleX;
+        const targetY = targetNode.position.y * scaleY;
+
+        const length = Math.sqrt(
+            Math.pow(targetX - sourceX, 2) + Math.pow(targetY - sourceY, 2)
+        );
+        const angle = Math.atan2(targetY - sourceY, targetX - sourceX) * 180 / Math.PI;
+
+        return {
+            position: 'absolute' as const,
+            left: `${sourceX}px`,
+            top: `${sourceY}px`,
+            width: `${length}px`,
+            height: '2px',
+            backgroundColor: edge.type === 'floor' ? 'green' : edge.type === 'stair' ? 'blue' : 'red',
+            transform: `translate(0, -50%) rotate(${angle}deg)`,
+            transformOrigin: '0 0',
+            zIndex: 1
+        };
     };
 
     return (
         <Box sx={{ p: 2 }}>
-            <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'center' }}>
+            <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+                <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    style={{ display: 'none' }}
+                    id="image-upload"
+                />
+                <label htmlFor="image-upload">
+                    <Button variant="contained" component="span">
+                        Upload Floor Plan
+                    </Button>
+                </label>
                 <TextField
                     label="Default Building ID"
-                    value={defaultValues.building_id}
-                    onChange={(e) => setDefaultValues({ ...defaultValues, building_id: e.target.value })}
+                    value={defaultBuildingId}
+                    onChange={(e) => setDefaultBuildingId(e.target.value)}
                     size="small"
                 />
                 <TextField
                     label="Default Floor ID"
-                    value={defaultValues.floor_id}
-                    onChange={(e) => setDefaultValues({ ...defaultValues, floor_id: e.target.value })}
+                    value={defaultFloorId}
+                    onChange={(e) => setDefaultFloorId(e.target.value)}
                     size="small"
                 />
-            </Box>
-
-            <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                style={{ marginBottom: 16 }}
-            />
-
-            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                 <Button
                     variant="contained"
+                    color={isCreatingEdge ? "secondary" : "primary"}
                     onClick={() => setIsCreatingEdge(!isCreatingEdge)}
-                    color={isCreatingEdge ? 'secondary' : 'primary'}
                 >
-                    {isCreatingEdge ? 'Cancel Edge Creation' : 'Create Edge'}
+                    {isCreatingEdge ? "Cancel Edge" : "Create Edge"}
                 </Button>
-                <Button variant="contained" onClick={exportToCSV}>
+                <Button
+                    variant="contained"
+                    color="success"
+                    onClick={handleExport}
+                    disabled={nodes.length === 0}
+                >
                     Export to CSV
                 </Button>
             </Box>
 
             <Box
+                sx={{
+                    width: CANVAS_WIDTH,
+                    height: CANVAS_HEIGHT,
+                    border: '1px solid #ccc',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    backgroundColor: '#f5f5f5',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    mb: 2
+                }}
                 ref={canvasRef}
                 onClick={handleCanvasClick}
-                sx={{
-                    position: 'relative',
-                    width: 'fit-content',
-                    height: 'fit-content',
-                    border: '1px solid #ccc',
-                }}
             >
-                {image && <img src={image} alt="Floor plan" style={{ maxWidth: '100%' }} />}
-
-                {nodes.map((node) => (
-                    <Box
-                        key={node.id}
-                        sx={{
-                            position: 'absolute',
-                            left: node.x - 5,
-                            top: node.y - 5,
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            bgcolor: sourceNode?.id === node.id ? 'secondary.main' : 'primary.main',
-                            cursor: 'pointer',
+                {image && (
+                    <img
+                        ref={imageRef}
+                        src={image}
+                        alt="Floor Plan"
+                        style={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain',
+                            position: 'relative',
+                            zIndex: 0
                         }}
+                        onLoad={() => {
+                            if (imageRef.current) {
+                                setNodes([]); // Clear nodes when loading new image
+                            }
+                        }}
+                        draggable={false}
                     />
-                ))}
+                )}
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0
+                    }}
+                >
+                    {edges.map(edge => (
+                        <div key={`${edge.sourceId}-${edge.targetId}`} style={getEdgeStyle(edge)} />
+                    ))}
+                    {nodes.map(node => (
+                        <div key={node.id} style={getNodeStyle(node)} />
+                    ))}
+                </Box>
+            </Box>
 
-                {edges.map((edge) => {
-                    const source = nodes.find(n => n.id === edge.source_id);
-                    const target = nodes.find(n => n.id === edge.target_id);
-                    if (!source || !target) return null;
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                <TableContainer component={Paper} sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ p: 1, bgcolor: 'primary.main', color: 'white' }}>
+                        Nodes Preview
+                    </Typography>
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>ID</TableCell>
+                                <TableCell>Building ID</TableCell>
+                                <TableCell>Floor ID</TableCell>
+                                <TableCell>Name</TableCell>
+                                <TableCell>X</TableCell>
+                                <TableCell>Y</TableCell>
+                                <TableCell>Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {nodes.map((node) => (
+                                <TableRow
+                                    key={node.id}
+                                    onClick={() => handleNodeEdit(node)}
+                                    sx={{
+                                        cursor: 'pointer',
+                                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' }
+                                    }}
+                                >
+                                    <TableCell>{node.id}</TableCell>
+                                    <TableCell>{node.buildingId}</TableCell>
+                                    <TableCell>{node.floorId}</TableCell>
+                                    <TableCell>{node.name}</TableCell>
+                                    <TableCell>{node.position.x}</TableCell>
+                                    <TableCell>{node.position.y}</TableCell>
+                                    <TableCell>
+                                        <Button
+                                            size="small"
+                                            color="error"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteNode(node.id);
+                                            }}
+                                        >
+                                            Delete
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                            {nodes.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={7} align="center">No nodes created yet</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
 
-                    return (
-                        <svg
-                            key={edge.id}
-                            style={{
-                                position: 'absolute',
-                                left: 0,
-                                top: 0,
-                                width: '100%',
-                                height: '100%',
-                                pointerEvents: 'none',
-                            }}
-                        >
-                            <line
-                                x1={source.x}
-                                y1={source.y}
-                                x2={target.x}
-                                y2={target.y}
-                                stroke={edge.type === 'elevator' ? '#f00' : edge.type === 'stair' ? '#00f' : '#0f0'}
-                                strokeWidth={2}
-                            />
-                        </svg>
-                    );
-                })}
+                <TableContainer component={Paper} sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ p: 1, bgcolor: 'primary.main', color: 'white' }}>
+                        Edges Preview
+                    </Typography>
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>Building ID</TableCell>
+                                <TableCell>Floor ID</TableCell>
+                                <TableCell>Source ID</TableCell>
+                                <TableCell>Target ID</TableCell>
+                                <TableCell>Type</TableCell>
+                                <TableCell>Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {edges.map((edge) => (
+                                <TableRow
+                                    key={edge.id}
+                                    onClick={() => handleEdgeEdit(edge)}
+                                    sx={{
+                                        cursor: 'pointer',
+                                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' }
+                                    }}
+                                >
+                                    <TableCell>{edge.buildingId}</TableCell>
+                                    <TableCell>{edge.floorId}</TableCell>
+                                    <TableCell>{edge.sourceId}</TableCell>
+                                    <TableCell>{edge.targetId}</TableCell>
+                                    <TableCell>{edge.type}</TableCell>
+                                    <TableCell>
+                                        <Button
+                                            size="small"
+                                            color="error"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteEdge(edge.id);
+                                            }}
+                                        >
+                                            Delete
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                            {edges.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={6} align="center">No edges created yet</TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </Box>
 
             <Dialog
                 open={showNodeForm}
-                onClose={() => setShowNodeForm(false)}
+                onClose={() => {
+                    setShowNodeForm(false);
+                    setEditingNode(null);
+                }}
                 disableEscapeKeyDown
             >
                 <Box
@@ -228,24 +559,27 @@ export const Canvas = () => {
                     onSubmit={handleNodeFormSubmit}
                     sx={{ p: 2 }}
                 >
+                    <Typography variant="h6" sx={{ mb: 2 }}>
+                        {editingNode ? 'Edit Node' : 'Create Node'}
+                    </Typography>
                     <TextField
                         label="Building ID"
-                        value={nodeForm.building_id}
-                        onChange={(e) => setNodeForm({ ...nodeForm, building_id: e.target.value })}
+                        value={nodeFormData.buildingId}
+                        onChange={(e) => setNodeFormData({ ...nodeFormData, buildingId: e.target.value })}
                         fullWidth
                         margin="normal"
                     />
                     <TextField
                         label="Floor ID"
-                        value={nodeForm.floor_id}
-                        onChange={(e) => setNodeForm({ ...nodeForm, floor_id: e.target.value })}
+                        value={nodeFormData.floorId}
+                        onChange={(e) => setNodeFormData({ ...nodeFormData, floorId: e.target.value })}
                         fullWidth
                         margin="normal"
                     />
                     <TextField
                         label="Name"
-                        value={nodeForm.name}
-                        onChange={(e) => setNodeForm({ ...nodeForm, name: e.target.value })}
+                        value={nodeFormData.name}
+                        onChange={(e) => setNodeFormData({ ...nodeFormData, name: e.target.value })}
                         fullWidth
                         margin="normal"
                         autoFocus
@@ -257,26 +591,39 @@ export const Canvas = () => {
                         }}
                     />
                     <Button onClick={handleNodeFormSubmit} variant="contained">
-                        Create Node
+                        {editingNode ? 'Save Changes' : 'Create Node'}
                     </Button>
                 </Box>
             </Dialog>
 
-            <Dialog open={showEdgeForm} onClose={handleEdgeFormClose}>
+            <Dialog
+                open={showEdgeForm}
+                onClose={() => {
+                    setShowEdgeForm(false);
+                    setEditingEdge(null);
+                }}
+            >
                 <Box sx={{ p: 2 }}>
+                    <Typography variant="h6" sx={{ mb: 2 }}>
+                        {editingEdge ? 'Edit Edge' : 'Create Edge'}
+                    </Typography>
                     <FormControl fullWidth margin="normal">
                         <InputLabel>Edge Type</InputLabel>
                         <Select
-                            value={edgeType}
-                            onChange={(e) => setEdgeType(e.target.value as 'floor' | 'stair' | 'elevator')}
+                            value={edgeFormData.type}
+                            onChange={(e) => setEdgeFormData({ ...edgeFormData, type: e.target.value as 'floor' | 'stair' | 'elevator' })}
                         >
                             <MenuItem value="floor">Floor</MenuItem>
                             <MenuItem value="stair">Stair</MenuItem>
                             <MenuItem value="elevator">Elevator</MenuItem>
                         </Select>
                     </FormControl>
-                    <Button onClick={handleEdgeFormClose} variant="contained">
-                        Close
+                    <Button
+                        onClick={handleEdgeFormSubmit}
+                        variant="contained"
+                        sx={{ mt: 2 }}
+                    >
+                        {editingEdge ? 'Save Changes' : 'Create Edge'}
                     </Button>
                 </Box>
             </Dialog>
