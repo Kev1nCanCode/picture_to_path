@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Box, Button, Dialog, TextField, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography } from '@mui/material';
-import type { Node, Edge, NodeFormData } from '../types';
+import type { Node, Edge, NodeFormData, NodeColor } from '../types';
 
 const CANVAS_WIDTH = 800;  // Fixed width for the canvas container
 const CANVAS_HEIGHT = 600; // Fixed height for the canvas container
@@ -20,7 +20,8 @@ export const Canvas = () => {
         buildingId: '',
         floorId: '',
         name: '',
-        position: { x: 0, y: 0 }
+        position: { x: 0, y: 0 },
+        color: 'red'
     });
     const [edgeFormData, setEdgeFormData] = useState({
         buildingId: '',
@@ -123,7 +124,8 @@ export const Canvas = () => {
                 buildingId: defaultBuildingId,
                 floorId: defaultFloorId,
                 name: '',
-                position: { x: actualX, y: actualY }
+                position: { x: actualX, y: actualY },
+                color: 'red'
             });
             setShowNodeForm(true);
         }
@@ -144,7 +146,8 @@ export const Canvas = () => {
             buildingId: node.buildingId,
             floorId: node.floorId,
             name: node.name,
-            position: node.position
+            position: node.position,
+            color: node.color
         });
         setShowNodeForm(true);
     };
@@ -166,7 +169,8 @@ export const Canvas = () => {
                     buildingId: nodeFormData.buildingId,
                     floorId: nodeFormData.floorId,
                     name: nodeFormData.name,
-                    position: nodeFormData.position
+                    position: nodeFormData.position,
+                    color: nodeFormData.color
                 };
                 setNodes([...nodes, newNode]);
                 setNextNodeId(nextNodeId + 1);
@@ -176,7 +180,8 @@ export const Canvas = () => {
                 buildingId: defaultBuildingId,
                 floorId: defaultFloorId,
                 name: '',
-                position: { x: 0, y: 0 }
+                position: { x: 0, y: 0 },
+                color: 'red'
             });
         }
     };
@@ -293,7 +298,7 @@ export const Canvas = () => {
             width: '12px',
             height: '12px',
             borderRadius: '50%',
-            backgroundColor: selectedNode?.id === node.id ? 'blue' : 'red',
+            backgroundColor: selectedNode?.id === node.id ? 'blue' : node.color,
             transform: 'translate(-50%, -50%)',
             cursor: 'pointer',
             zIndex: 2
@@ -590,6 +595,18 @@ export const Canvas = () => {
                             }
                         }}
                     />
+                    <FormControl fullWidth margin="normal">
+                        <InputLabel>Node Color</InputLabel>
+                        <Select
+                            value={nodeFormData.color}
+                            onChange={(e) => setNodeFormData({ ...nodeFormData, color: e.target.value as NodeColor })}
+                            label="Node Color"
+                        >
+                            <MenuItem value="red">Red</MenuItem>
+                            <MenuItem value="green">Green</MenuItem>
+                            <MenuItem value="blue">Blue</MenuItem>
+                        </Select>
+                    </FormControl>
                     <Button onClick={handleNodeFormSubmit} variant="contained">
                         {editingNode ? 'Save Changes' : 'Create Node'}
                     </Button>

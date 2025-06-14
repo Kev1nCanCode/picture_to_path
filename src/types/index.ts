@@ -1,9 +1,13 @@
+export type NodeColor = 'red' | 'green' | 'blue';
+
 export interface Node {
+
     id: string;
     buildingId: string;
     floorId: string;
     name: string;
     position: Position;
+    color: NodeColor;
 }
 
 export interface Edge {
@@ -20,6 +24,7 @@ export interface NodeFormData {
     floorId: string;
     name: string;
     position: Position;
+    color: NodeColor;
 }
 
 export interface Position {
