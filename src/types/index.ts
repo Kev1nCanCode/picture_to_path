@@ -17,6 +17,7 @@ export interface Edge {
     sourceId: string;
     targetId: string;
     type: 'floor' | 'stair' | 'elevator';
+    weight: number;
 }
 
 export interface NodeFormData {

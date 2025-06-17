@@ -29,7 +29,8 @@ export const Canvas = () => {
         floorId: '',
         sourceId: '',
         targetId: '',
-        type: 'floor' as 'floor' | 'stair' | 'elevator'
+        type: 'floor' as 'floor' | 'stair' | 'elevator',
+        weight: 0
     });
     const [defaultBuildingId, setDefaultBuildingId] = useState('');
     const [defaultFloorId, setDefaultFloorId] = useState('');
@@ -112,6 +113,12 @@ export const Canvas = () => {
                     // First node selection
                     setSelectedNode(clickedNode);
                 } else if (clickedNode.id !== selectedNode.id) {
+                    // Calculate weight using the distance formula
+                    const weight = Math.sqrt(
+                        Math.pow(clickedNode.position.x - selectedNode.position.x, 2) +
+                        Math.pow(clickedNode.position.y - selectedNode.position.y, 2)
+                    );
+
                     // Second node selection - create edge
                     const newEdge: Edge = {
                         id: `edge-${edges.length + 1}`,
@@ -119,7 +126,8 @@ export const Canvas = () => {
                         floorId: selectedNode.floorId,
                         sourceId: selectedNode.id,
                         targetId: clickedNode.id,
-                        type: 'floor' // default type
+                        type: 'floor', // default type
+                        weight: weight
                     };
                     setEdges([...edges, newEdge]);
                     setSelectedNode(null);
@@ -207,6 +215,16 @@ export const Canvas = () => {
                 ));
                 setEditingEdge(null);
             } else if (selectedNode) {
+                // Find the target node to calculate weight
+                const targetNode = nodes.find(node => node.id === edgeFormData.targetId);
+                if (!targetNode) return;
+
+                // Calculate weight using the distance formula
+                const weight = Math.sqrt(
+                    Math.pow(targetNode.position.x - selectedNode.position.x, 2) +
+                    Math.pow(targetNode.position.y - selectedNode.position.y, 2)
+                );
+
                 // Create new edge
                 const newEdge: Edge = {
                     id: `edge-${edges.length + 1}`,
@@ -215,6 +233,7 @@ export const Canvas = () => {
                     sourceId: selectedNode.id,
                     targetId: edgeFormData.targetId,
                     type: edgeFormData.type,
+                    weight: weight
                 };
                 setEdges([...edges, newEdge]);
                 setSelectedNode(null);
@@ -225,7 +244,8 @@ export const Canvas = () => {
                 floorId: '',
                 sourceId: '',
                 targetId: '',
-                type: 'floor'
+                type: 'floor',
+                weight: 0
             });
         }
     };
@@ -241,7 +261,8 @@ export const Canvas = () => {
             floorId: edge.floorId,
             sourceId: edge.sourceId,
             targetId: edge.targetId,
-            type: edge.type
+            type: edge.type,
+            weight: edge.weight
         });
         setShowEdgeForm(true);
     };
@@ -263,13 +284,14 @@ export const Canvas = () => {
 
         // Create edges CSV
         const edgesCSV = [
-            ['building_id', 'floor_id', 'source_id', 'target_id', 'type'].join(';'),
+            ['building_id', 'floor_id', 'source_id', 'target_id', 'type', 'weight'].join(';'),
             ...edges.map(edge => [
                 edge.buildingId,
                 edge.floorId,
                 edge.sourceId,
                 edge.targetId,
-                edge.type
+                edge.type,
+                edge.weight.toFixed(2)
             ].join(';'))
         ].join('\n');
 
@@ -331,16 +353,22 @@ export const Canvas = () => {
         if (!sourceNode || !targetNode) return {};
 
         const imageRect = imageElement.getBoundingClientRect();
+        const canvasRect = canvasRef.current?.getBoundingClientRect();
+        if (!canvasRect) return {};
 
         // Calculate scaling factors
         const scaleX = imageRect.width / imageSize.width;
         const scaleY = imageRect.height / imageSize.height;
 
+        // Calculate the offset of the image within the canvas
+        const imageOffsetX = (canvasRect.width - imageRect.width) / 2;
+        const imageOffsetY = (canvasRect.height - imageRect.height) / 2;
+
         // Convert actual image coordinates to display coordinates
-        const sourceX = sourceNode.position.x * scaleX;
-        const sourceY = sourceNode.position.y * scaleY;
-        const targetX = targetNode.position.x * scaleX;
-        const targetY = targetNode.position.y * scaleY;
+        const sourceX = sourceNode.position.x * scaleX + imageOffsetX;
+        const sourceY = sourceNode.position.y * scaleY + imageOffsetY;
+        const targetX = targetNode.position.x * scaleX + imageOffsetX;
+        const targetY = targetNode.position.y * scaleY + imageOffsetY;
 
         const length = Math.sqrt(
             Math.pow(targetX - sourceX, 2) + Math.pow(targetY - sourceY, 2)
@@ -538,6 +566,7 @@ export const Canvas = () => {
                                 <TableCell>Source ID</TableCell>
                                 <TableCell>Target ID</TableCell>
                                 <TableCell>Type</TableCell>
+                                <TableCell>Weight</TableCell>
                                 <TableCell>Actions</TableCell>
                             </TableRow>
                         </TableHead>
@@ -556,6 +585,7 @@ export const Canvas = () => {
                                     <TableCell>{edge.sourceId}</TableCell>
                                     <TableCell>{edge.targetId}</TableCell>
                                     <TableCell>{edge.type}</TableCell>
+                                    <TableCell>{edge.weight.toFixed(2)}</TableCell>
                                     <TableCell>
                                         <Button
                                             size="small"
