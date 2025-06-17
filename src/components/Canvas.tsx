@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Box, Button, Dialog, TextField, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography } from '@mui/material';
+import { Box, Button, Dialog, TextField, Select, MenuItem, FormControl, InputLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Switch, FormControlLabel } from '@mui/material';
 import type { Node, Edge, NodeFormData, NodeColor } from '../types';
 
 const CANVAS_WIDTH = 800;  // Fixed width for the canvas container
@@ -21,7 +21,8 @@ export const Canvas = () => {
         floorId: '',
         name: '',
         position: { x: 0, y: 0 },
-        color: 'red'
+        color: 'red',
+        isSearchable: false
     });
     const [edgeFormData, setEdgeFormData] = useState({
         buildingId: '',
@@ -35,6 +36,7 @@ export const Canvas = () => {
     const [nextNodeId, setNextNodeId] = useState(1); // Track the next available node ID
     const [editingNode, setEditingNode] = useState<Node | null>(null);
     const [editingEdge, setEditingEdge] = useState<Edge | null>(null);
+    const [isNextNodeSearchable, setIsNextNodeSearchable] = useState(false);
 
     useEffect(() => {
         const updatePositions = () => {
@@ -67,25 +69,29 @@ export const Canvas = () => {
     };
 
     const handleCanvasClick = (event: React.MouseEvent<HTMLDivElement>) => {
-        if (!image || !canvasRef.current) return;
+        const canvas = canvasRef.current;
+        if (!canvas || !image) return;
 
-        const imageElement = canvasRef.current.querySelector('img');
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        const imageElement = canvas.querySelector('img');
         if (!imageElement) return;
 
         const imageRect = imageElement.getBoundingClientRect();
-        const canvasRect = canvasRef.current.getBoundingClientRect();
-
-        // Calculate click position relative to the canvas
-        const x = event.clientX - canvasRect.left;
-        const y = event.clientY - canvasRect.top;
 
         // Calculate scaling factors
         const scaleX = imageSize.width / imageRect.width;
         const scaleY = imageSize.height / imageRect.height;
 
-        // Convert to actual image coordinates
-        const actualX = Math.round(x * scaleX);
-        const actualY = Math.round(y * scaleY);
+        // Calculate the offset of the image within the canvas
+        const imageOffsetX = (rect.width - imageRect.width) / 2;
+        const imageOffsetY = (rect.height - imageRect.height) / 2;
+
+        // Convert display coordinates to actual image coordinates
+        const actualX = Math.round((x - imageOffsetX) * scaleX);
+        const actualY = Math.round((y - imageOffsetY) * scaleY);
 
         // Ensure coordinates are within image bounds
         if (actualX < 0 || actualX > imageSize.width || actualY < 0 || actualY > imageSize.height) {
@@ -125,7 +131,8 @@ export const Canvas = () => {
                 floorId: defaultFloorId,
                 name: '',
                 position: { x: actualX, y: actualY },
-                color: 'red'
+                color: 'red',
+                isSearchable: isNextNodeSearchable
             });
             setShowNodeForm(true);
         }
@@ -147,7 +154,8 @@ export const Canvas = () => {
             floorId: node.floorId,
             name: node.name,
             position: node.position,
-            color: node.color
+            color: node.color,
+            isSearchable: node.isSearchable
         });
         setShowNodeForm(true);
     };
@@ -170,7 +178,8 @@ export const Canvas = () => {
                     floorId: nodeFormData.floorId,
                     name: nodeFormData.name,
                     position: nodeFormData.position,
-                    color: nodeFormData.color
+                    color: nodeFormData.color,
+                    isSearchable: nodeFormData.isSearchable
                 };
                 setNodes([...nodes, newNode]);
                 setNextNodeId(nextNodeId + 1);
@@ -181,7 +190,8 @@ export const Canvas = () => {
                 floorId: defaultFloorId,
                 name: '',
                 position: { x: 0, y: 0 },
-                color: 'red'
+                color: 'red',
+                isSearchable: isNextNodeSearchable
             });
         }
     };
@@ -239,14 +249,15 @@ export const Canvas = () => {
     const handleExport = () => {
         // Create nodes CSV
         const nodesCSV = [
-            ['id', 'building_id', 'floor_id', 'name', 'x', 'y'].join(';'),
+            ['id', 'building_id', 'floor_id', 'name', 'x', 'y', 'is_searchable'].join(';'),
             ...nodes.map(node => [
                 node.id,
                 node.buildingId,
                 node.floorId,
                 node.name,
                 node.position.x,
-                node.position.y
+                node.position.y,
+                node.isSearchable ? 'TRUE' : 'FALSE'
             ].join(';'))
         ].join('\n');
 
@@ -282,14 +293,20 @@ export const Canvas = () => {
         if (!imageElement) return {};
 
         const imageRect = imageElement.getBoundingClientRect();
+        const canvasRect = canvasRef.current?.getBoundingClientRect();
+        if (!canvasRect) return {};
 
         // Calculate scaling factors
         const scaleX = imageRect.width / imageSize.width;
         const scaleY = imageRect.height / imageSize.height;
 
+        // Calculate the offset of the image within the canvas
+        const imageOffsetX = (canvasRect.width - imageRect.width) / 2;
+        const imageOffsetY = (canvasRect.height - imageRect.height) / 2;
+
         // Convert actual image coordinates to display coordinates
-        const displayX = node.position.x * scaleX;
-        const displayY = node.position.y * scaleY;
+        const displayX = node.position.x * scaleX + imageOffsetX;
+        const displayY = node.position.y * scaleY + imageOffsetY;
 
         return {
             position: 'absolute',
@@ -377,6 +394,16 @@ export const Canvas = () => {
                 >
                     {isCreatingEdge ? "Cancel Edge" : "Create Edge"}
                 </Button>
+                <FormControlLabel
+                    control={
+                        <Switch
+                            checked={isNextNodeSearchable}
+                            onChange={(e) => setIsNextNodeSearchable(e.target.checked)}
+                            color="primary"
+                        />
+                    }
+                    label={`Next node will be ${isNextNodeSearchable ? 'searchable' : 'not searchable'}`}
+                />
                 <Button
                     variant="contained"
                     color="success"
@@ -455,6 +482,7 @@ export const Canvas = () => {
                                 <TableCell>Name</TableCell>
                                 <TableCell>X</TableCell>
                                 <TableCell>Y</TableCell>
+                                <TableCell>Searchable</TableCell>
                                 <TableCell>Actions</TableCell>
                             </TableRow>
                         </TableHead>
@@ -474,6 +502,7 @@ export const Canvas = () => {
                                     <TableCell>{node.name}</TableCell>
                                     <TableCell>{node.position.x}</TableCell>
                                     <TableCell>{node.position.y}</TableCell>
+                                    <TableCell>{node.isSearchable ? 'TRUE' : 'FALSE'}</TableCell>
                                     <TableCell>
                                         <Button
                                             size="small"
